@@ -2,6 +2,8 @@
 #![feature(test)]
 
 use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::Hasher;
 use std::hash::Hash;
 use std::vec::Vec;
 use std::option::Option;
@@ -16,12 +18,12 @@ struct Node {
 }
 
 pub struct UnionFind<T> {
-    to_index: HashMap<T, Index>,
+    to_index: HashMap<u64, Index>,
     from_index: Vec<T>,
     nodes: Vec<Node>,
 }
 
-impl <T: Copy + Eq + Hash + PartialOrd> UnionFind<T> {
+impl <T: Eq + Hash + PartialOrd> UnionFind<T> {
     pub fn new() -> Self {
         Self {
             to_index: HashMap::new(),
@@ -33,7 +35,10 @@ impl <T: Copy + Eq + Hash + PartialOrd> UnionFind<T> {
     pub fn insert(&mut self, x: T) {
         let index = Index(self.nodes.len());
         self.nodes.push(Node { parent: index, size: 1 });
-        self.to_index.insert(x, index);
+
+        let mut hasher = DefaultHasher::new();
+        x.hash(&mut hasher);
+        self.to_index.insert(hasher.finish(), index);
         self.from_index.push(x);
     }
 
@@ -41,11 +46,11 @@ impl <T: Copy + Eq + Hash + PartialOrd> UnionFind<T> {
         if xs.len() < 2 {
             true
         } else {
-            let head = xs[0];
+            let head = &xs[0];
             let mut iter = xs.iter();
             iter.next(); // skip the head
             for x in iter {
-                let b = self.union(head, *x);
+                let b = self.union(head, x);
                 if !b {
                     return false
                 }
@@ -54,14 +59,14 @@ impl <T: Copy + Eq + Hash + PartialOrd> UnionFind<T> {
         }
     }
 
-    pub fn union(&mut self, x: T, y: T) -> bool {
+    pub fn union(&mut self, x: &T, y: &T) -> bool {
         match self.union_internal(x, y) {
             None => false,
             Some(_) => true,
         }
     }
 
-    fn union_internal(&mut self, x: T, y: T) -> Option<()> {
+    fn union_internal(&mut self, x: &T, y: &T) -> Option<()> {
         if x > y {
             self.union_internal(y, x)
         } else {
@@ -82,17 +87,15 @@ impl <T: Copy + Eq + Hash + PartialOrd> UnionFind<T> {
         }
     }
 
-
-    pub fn find(&mut self, x: T) -> Option<T> {
+    pub fn find(&mut self, x: &T) -> Option<&T> {
         let class_index = self.find_get(x)?;
-        match self.from_index.get(class_index.0) {
-            None => None,
-            Some(t) => Some(*t),
-        }
+        self.from_index.get(class_index.0)
     }
 
-    fn find_get(&mut self, x: T) -> Option<Index> {
-        let elem_index = HashMap::get(&self.to_index, &x)?;
+    fn find_get(&mut self, x: &T) -> Option<Index> {
+        let mut hasher = DefaultHasher::new();
+        x.hash(&mut hasher);
+        let elem_index = HashMap::get(&self.to_index, &hasher.finish())?;
         find_index(&mut self.nodes, *elem_index)
     }
 }
@@ -115,7 +118,6 @@ mod tests {
     extern crate test;
     use super::*;
     use test::Bencher;
-    use std::slice::Chunks;
 
     #[test]
     fn it_works() {
@@ -127,9 +129,9 @@ mod tests {
         u.unions(&[3,4]);
         u.unions(&[7]);
 
-        assert_eq!(u.find(6), Some(1));
-        assert_eq!(u.find(3), Some(3));
-        assert_eq!(u.find(7), Some(7));
+        assert_eq!(u.find(&6), Some(&1));
+        assert_eq!(u.find(&3), Some(&3));
+        assert_eq!(u.find(&7), Some(&7));
     }
 
     #[bench]
@@ -145,11 +147,9 @@ mod tests {
 
             for chunk in 0 .. 2000 {
                 for elem in 0 .. 500 {
-                    u.union(chunk * 500, chunk * 500 + elem);
+                    u.union(&(chunk * 500), &(chunk * 500 + elem));
                 }
             }
         });
     }
-
-
 }
